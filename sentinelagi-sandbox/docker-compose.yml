@@ -1,0 +1,91 @@
+# ============================================
+# SentinelAGI Sandbox - Docker Compose
+# ============================================
+
+version: "3.8"
+
+services:
+  # Main API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinelagi-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Sandbox configuration
+      - SANDBOX_RUNTIME=runsc
+      - SANDBOX_IMAGE=sentinelagi/agent-sandbox:latest
+      - SANDBOX_MEMORY_LIMIT=512m
+      - SANDBOX_CPU_QUOTA=1.0
+      - SANDBOX_MAX_EXECUTION_TIME=300
+      - SANDBOX_ENABLE_SECCOMP=true
+      - SANDBOX_ENABLE_APPARMOR=true
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_STREAM_MAXLEN=100000
+      # Security
+      - SECURITY_SECRET_KEY=${SECURITY_SECRET_KEY:-change-me-in-production}
+      - SECURITY_MAX_CONCURRENT_AGENTS=10
+      - SECURITY_ENABLE_CONSTITUTIONAL_AI=true
+      - SECURITY_ENABLE_MITRE_ATLAS_MAPPING=true
+      - SECURITY_AUTO_KILL_ON_VIOLATION=false
+      # Agent configuration
+      - AGENT_MAX_PLANNING_STEPS=20
+      - AGENT_MAX_CORRECTION_ATTEMPTS=3
+      - AGENT_CRITIC_MODEL=gpt-4
+      - AGENT_EXECUTOR_MODEL=gpt-4
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sentinelagi
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+  # Redis for audit logging and caching
+  redis:
+    image: redis:7-alpine
+    container_name: sentinelagi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - sentinelagi
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # gVisor runtime detection helper
+  # Note: gVisor must be installed on the host Docker daemon
+  # See: https://gvisor.dev/docs/user_guide/install/
+
+volumes:
+  redis_data:
+
+networks:
+  sentinelagi:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

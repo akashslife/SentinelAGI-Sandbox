@@ -1,0 +1,35 @@
+# ============================================
+# SentinelAGI - Agent Sandbox Container
+# ============================================
+# This is the container image that runs inside the sandbox
+# for executing agent code. It is intentionally minimal.
+
+FROM python:3.11-alpine
+
+# Security: Create non-root user
+RUN addgroup -S agent && adduser -S agent -G agent
+
+# Install only essential packages
+RUN apk add --no-cache \
+    ca-certificates \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /tmp
+
+# Pre-install safe Python packages
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    requests
+
+# Security: No network access by default (enforced by Docker)
+# Security: Read-only root filesystem
+# Security: No new privileges
+# Security: All capabilities dropped
+
+# Run as non-root
+USER agent
+
+# Default: sleep (container is managed externally)
+CMD ["sleep", "3600"]
